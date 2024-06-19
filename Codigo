@@ -1,0 +1,1645 @@
+import os
+import pandas as pd
+from fpdf import FPDF
+from io import StringIO
+
+# Cambia el directorio de trabajo al correcto
+os.chdir("C:/Users/User/Desktop/Curso R/Modelo_Predictivo")
+
+# Leer el archivo de Excel
+archivo_excel = 'PF_MODELOS_P_RAFF_QUITO.xlsx'
+nombre_pestaña = 'Fuente_Datos'
+
+# Leer la pestaña específica del archivo de Excel
+df_fuente_datos = pd.read_excel(archivo_excel, sheet_name=nombre_pestaña)
+
+# Generar el análisis del dataset original
+
+# Información básica del dataset
+info_buffer = StringIO()
+df_fuente_datos.info(buf=info_buffer)
+df_info = info_buffer.getvalue()
+
+# Descriptivos básicos de las columnas numéricas
+df_descriptive_stats = df_fuente_datos.describe()
+
+# Verificación de valores nulos
+df_nulls = df_fuente_datos.isnull().sum()
+
+# Seleccionar las columnas de interés para los descriptivos básicos
+columns_of_interest = ['YEAR', 'CHQ.NO.', 'WITHDRAWAL AMT', 'DEPOSIT AMT']
+
+# Formatear los descriptivos básicos de las columnas de interés en columnas
+formatted_descriptive_stats = "\n".join([f"{col}: {df_descriptive_stats[col]}" for col in columns_of_interest])
+
+# Crear un PDF
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Informe de Análisis de Datos', 0, 1, 'C')
+
+    def chapter_title(self, title):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, title, 0, 1, 'L')
+        self.ln(5)
+
+    def chapter_body(self, body):
+        self.set_font('Arial', '', 12)
+        self.multi_cell(0, 10, body)
+        self.ln()
+
+# Crear el PDF original
+pdf = PDF()
+pdf.add_page()
+
+# Información básica del dataset original
+pdf.chapter_title("Información básica del dataset")
+pdf.chapter_body(df_info)
+
+# Descriptivos básicos de las columnas numéricas seleccionadas en columnas
+pdf.chapter_title("Descriptivos básicos de las columnas numéricas seleccionadas")
+pdf.chapter_body(formatted_descriptive_stats)
+
+# Verificación de valores nulos del dataset original
+pdf.chapter_title("Verificación de valores nulos")
+pdf.chapter_body(df_nulls.to_string())
+
+# Guardar el PDF original
+pdf.output("Informe_Analisis_Datos.pdf")
+
+print("Informe PDF generado como 'Informe_Analisis_Datos.pdf'")
+
+
+# Excluir el año 2015 y ciertos ACCOUNT NO del dataset original
+df_filtrado = df_fuente_datos[
+    (df_fuente_datos['YEAR'] != 2015) &
+    (~df_fuente_datos['ACCOUNT NO'].isin([
+        "'409000405747'",
+        "'409000493210'",
+        "'409000611074'"
+    ]))
+]
+
+df_filtrado
+
+import pandas as pd
+
+# Supongamos que df_filtrado es tu DataFrame con los datos filtrados y procesados
+# Primero, convierte el campo DATE a formato de fecha adecuado
+df_filtrado['DATE'] = pd.to_datetime(df_filtrado['DATE'])
+
+# Luego, extrae el año y el mes de la fecha
+df_filtrado['Año'] = df_filtrado['DATE'].dt.year
+df_filtrado['Mes'] = df_filtrado['DATE'].dt.month
+
+# Agrupa los datos por año y mes y suma los valores de DEPOSIT AMT
+df_agrupado = df_filtrado.groupby(['Año', 'Mes'])['DEPOSIT AMT'].sum().reset_index()
+
+# Muestra el DataFrame resultante
+print(df_agrupado)
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Ajustar el modelo de Holt a los datos agrupados
+modelo_holt = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add').fit()
+
+# Obtener las predicciones del modelo
+predicciones = modelo_holt.predict(start=df_agrupado.index[0], end=df_agrupado.index[-1])
+
+# Mostrar las predicciones
+print(predicciones)
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Ajustar el modelo de Winter
+modelo_winter = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add', seasonal='add', seasonal_periods=12).fit()
+
+# Obtener las predicciones
+predicciones_winter = modelo_winter.predict(start=0, end=len(df_agrupado)-1)
+
+# Mostrar las predicciones
+print(predicciones_winter)
+
+
+import pandas as pd
+
+# Suponiendo que tienes df_filtrado con los datos filtrados y agrupados
+# Vamos a agrupar por año y mes y sumar los valores de DEPOSIT AMT
+df_agrupado = df_filtrado.groupby([df_filtrado['DATE'].dt.year, df_filtrado['DATE'].dt.month])['DEPOSIT AMT'].sum().reset_index()
+
+# Renombramos las columnas para mayor claridad
+df_agrupado.columns = ['Year', 'Month', 'DEPOSIT AMT']
+
+# Convertimos Year y Month a formato datetime
+df_agrupado['DATE'] = pd.to_datetime(df_agrupado[['Year', 'Month']].assign(day=1))
+
+# Establecemos DATE como índice (si es necesario)
+df_agrupado.set_index('DATE', inplace=True)
+
+# Mostramos el DataFrame para verificar
+print(df_agrupado.head())
+
+import matplotlib.pyplot as plt
+
+# Graficar la serie temporal
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'])
+plt.title('Serie Temporal de DEPOSIT AMT')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.show()
+
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Descomponer la serie temporal
+decomposition = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+
+# Graficar la descomposición
+fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+
+axes[0].set_title('Descomposición de la Serie Temporal')
+axes[0].plot(df_agrupado['DEPOSIT AMT'], label='Serie Original')
+axes[0].legend(loc='upper left')
+
+axes[1].plot(decomposition.trend, label='Tendencia')
+axes[1].legend(loc='upper left')
+
+axes[2].plot(decomposition.seasonal, label='Estacionalidad')
+axes[2].legend(loc='upper left')
+
+axes[3].plot(decomposition.resid, label='Residuos')
+axes[3].legend(loc='upper left')
+
+plt.tight_layout()
+plt.show()
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Ajustar el modelo de Winters
+modelo_winter = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add', seasonal='add', seasonal_periods=12).fit()
+
+# Obtener las predicciones
+predicciones_winter = modelo_winter.predict(start=0, end=len(df_agrupado)-1)
+
+# Mostrar las predicciones
+print(predicciones_winter)
+
+
+
+import pandas as pd
+import os
+
+# Cambia el directorio de trabajo al correcto
+os.chdir("C:/Users/User/Desktop/Curso R/Modelo_Predictivo")
+
+# Leer el archivo de Excel
+archivo_excel = 'PF_MODELOS_P_RAFF_QUITO.xlsx'
+nombre_pestaña = 'Fuente_Datos'
+
+# Leer la pestaña específica del archivo de Excel
+df_fuente_datos = pd.read_excel(archivo_excel, sheet_name=nombre_pestaña)
+
+# Filtrar los datos y agrupar por año y mes
+df_filtrado = df_fuente_datos[
+    (df_fuente_datos['YEAR'] != 2015) &
+    (~df_fuente_datos['ACCOUNT NO'].isin([
+        "'409000405747'",
+        "'409000493210'",
+        "'409000611074'"
+    ]))
+]
+
+# Agrupar por año y mes y sumar los valores de DEPOSIT AMT
+df_agrupado = df_filtrado.groupby([df_filtrado['DATE'].dt.year, df_filtrado['DATE'].dt.month])['DEPOSIT AMT'].sum().reset_index()
+
+# Renombrar las columnas para mayor claridad
+df_agrupado.columns = ['Year', 'Month', 'DEPOSIT AMT']
+
+# Convertir Year y Month a formato datetime
+df_agrupado['DATE'] = pd.to_datetime(df_agrupado[['Year', 'Month']].assign(day=1))
+
+# Establecer DATE como índice
+df_agrupado.set_index('DATE', inplace=True)
+
+# Mostrar el DataFrame para verificar
+print(df_agrupado.head())
+
+import matplotlib.pyplot as plt
+
+# Graficar la serie temporal
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'])
+plt.title('Serie Temporal de DEPOSIT AMT')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.show()
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Descomponer la serie temporal
+decomposition = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+
+# Graficar la descomposición
+fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+
+axes[0].set_title('Descomposición de la Serie Temporal')
+axes[0].plot(df_agrupado['DEPOSIT AMT'], label='Serie Original')
+axes[0].legend(loc='upper left')
+
+axes[1].plot(decomposition.trend, label='Tendencia')
+axes[1].legend(loc='upper left')
+
+axes[2].plot(decomposition.seasonal, label='Estacionalidad')
+axes[2].legend(loc='upper left')
+
+axes[3].plot(decomposition.resid, label='Residuos')
+axes[3].legend(loc='upper left')
+
+plt.tight_layout()
+plt.show()
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Ajustar el modelo de Winters
+modelo_winter = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add', seasonal='add', seasonal_periods=12).fit()
+
+# Obtener las predicciones
+predicciones_winter = modelo_winter.predict(start=0, end=len(df_agrupado)-1)
+
+# Crear un DataFrame con las predicciones
+df_predicciones = pd.DataFrame({
+    'DATE': df_agrupado.index,
+    'DEPOSIT AMT': df_agrupado['DEPOSIT AMT'],
+    'Predicciones': predicciones_winter
+}).reset_index(drop=True)
+
+# Exportar a Excel
+df_predicciones.to_excel('Predicciones_Winters.xlsx', index=False)
+
+# Mostrar las predicciones
+print(df_predicciones.head())
+
+
+
+import pandas as pd
+import os
+
+# Cambia el directorio de trabajo al correcto
+os.chdir("C:/Users/User/Desktop/Curso R/Modelo_Predictivo")
+
+# Leer el archivo de Excel
+archivo_excel = 'PF_MODELOS_P_RAFF_QUITO.xlsx'
+nombre_pestaña = 'Fuente_Datos'
+
+# Leer la pestaña específica del archivo de Excel
+df_fuente_datos = pd.read_excel(archivo_excel, sheet_name=nombre_pestaña)
+
+# Filtrar los datos y agrupar por año y mes
+df_filtrado = df_fuente_datos[
+    (df_fuente_datos['YEAR'] != 2015) &
+    (~df_fuente_datos['ACCOUNT NO'].isin([
+        "'409000405747'",
+        "'409000493210'",
+        "'409000611074'"
+    ]))
+]
+
+# Agrupar por año y mes y sumar los valores de DEPOSIT AMT
+df_agrupado = df_filtrado.groupby([df_filtrado['DATE'].dt.year, df_filtrado['DATE'].dt.month])['DEPOSIT AMT'].sum().reset_index()
+
+# Renombrar las columnas para mayor claridad
+df_agrupado.columns = ['Year', 'Month', 'DEPOSIT AMT']
+
+# Convertir Year y Month a formato datetime
+df_agrupado['DATE'] = pd.to_datetime(df_agrupado[['Year', 'Month']].assign(day=1))
+
+# Establecer DATE como índice
+df_agrupado.set_index('DATE', inplace=True)
+
+# Mostrar el DataFrame para verificar
+print(df_agrupado.head())
+
+
+import matplotlib.pyplot as plt
+
+# Graficar la serie temporal
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'])
+plt.title('Serie Temporal de DEPOSIT AMT')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.show()
+
+
+# Calcular los promedios móviles
+window_size = 12  # Tamaño de la ventana para el promedio móvil
+df_agrupado['Moving_Average'] = df_agrupado['DEPOSIT AMT'].rolling(window=window_size).mean()
+
+# Mostrar el DataFrame con los promedios móviles
+print(df_agrupado.head(window_size + 5))
+
+# Graficar la serie temporal con los promedios móviles
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'], label='DEPOSIT AMT')
+plt.plot(df_agrupado['Moving_Average'], label='Promedio Móvil', color='red')
+plt.title('Serie Temporal de DEPOSIT AMT con Promedio Móvil')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+# Exportar a Excel
+df_agrupado.to_excel('Promedios_Moviles.xlsx', index=True)
+
+# Mostrar las primeras filas del DataFrame
+print(df_agrupado.head())
+
+
+
+import pandas as pd
+import os
+
+# Cambia el directorio de trabajo al correcto
+os.chdir("C:/Users/User/Desktop/Curso R/Modelo_Predictivo")
+
+# Leer el archivo de Excel
+archivo_excel = 'PF_MODELOS_P_RAFF_QUITO.xlsx'
+nombre_pestaña = 'Fuente_Datos'
+
+# Leer la pestaña específica del archivo de Excel
+df_fuente_datos = pd.read_excel(archivo_excel, sheet_name=nombre_pestaña)
+
+# Filtrar los datos y agrupar por año y mes
+df_filtrado = df_fuente_datos[
+    (df_fuente_datos['YEAR'] != 2015) &
+    (~df_fuente_datos['ACCOUNT NO'].isin([
+        "'409000405747'",
+        "'409000493210'",
+        "'409000611074'"
+    ]))
+]
+
+# Agrupar por año y mes y sumar los valores de DEPOSIT AMT
+df_agrupado = df_filtrado.groupby([df_filtrado['DATE'].dt.year, df_filtrado['DATE'].dt.month])['DEPOSIT AMT'].sum().reset_index()
+
+# Renombrar las columnas para mayor claridad
+df_agrupado.columns = ['Year', 'Month', 'DEPOSIT AMT']
+
+# Convertir Year y Month a formato datetime
+df_agrupado['DATE'] = pd.to_datetime(df_agrupado[['Year', 'Month']].assign(day=1))
+
+# Establecer DATE como índice
+df_agrupado.set_index('DATE', inplace=True)
+
+# Mostrar el DataFrame para verificar
+print(df_agrupado.head())
+
+
+
+import matplotlib.pyplot as plt
+
+# Graficar la serie temporal
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'])
+plt.title('Serie Temporal de DEPOSIT AMT')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.show()
+
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+# Ajustar el modelo de Holt
+modelo_holt = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add').fit()
+
+# Obtener las predicciones
+predicciones_holt = modelo_holt.predict(start=0, end=len(df_agrupado)-1)
+
+# Mostrar las predicciones
+print(predicciones_holt)
+
+# Graficar las predicciones junto con los datos originales
+plt.figure(figsize=(10, 6))
+plt.plot(df_agrupado['DEPOSIT AMT'], label='DEPOSIT AMT')
+plt.plot(predicciones_holt, label='Predicciones Holt', color='red')
+plt.title('Serie Temporal de DEPOSIT AMT con Predicciones Holt')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+# Añadir las predicciones al DataFrame
+df_agrupado['Predicciones_Holt'] = predicciones_holt
+
+# Exportar a Excel
+df_agrupado.to_excel('Predicciones_Holt.xlsx', index=True)
+
+# Mostrar las primeras filas del DataFrame
+print(df_agrupado.head())
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Leer los datos agrupados
+df_agrupado = pd.read_excel('Predicciones_Holt.xlsx', index_col='DATE')
+
+# Ajustar el modelo de Holt
+modelo_holt = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add').fit()
+
+# Ajustar el modelo de Winters
+modelo_winter = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add', seasonal='add', seasonal_periods=12).fit()
+
+# Ajustar el modelo de Promedios Móviles Exponenciales (en este caso, usaremos un promedio móvil simple para simplificar)
+ventana = 12  # Ventana de 12 meses
+promedios_moviles = df_agrupado['DEPOSIT AMT'].rolling(window=ventana).mean()
+
+
+# Obtener las predicciones
+predicciones_holt = modelo_holt.predict(start=0, end=len(df_agrupado)-1)
+predicciones_winter = modelo_winter.predict(start=0, end=len(df_agrupado)-1)
+
+# Descomponer la serie temporal original para los modelos de Holt y Winter
+descomposicion_holt = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+descomposicion_winter = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+
+
+# Crear la figura y los ejes
+plt.figure(figsize=(14, 8))
+
+# Serie temporal original
+plt.subplot(3, 1, 1)
+plt.plot(df_agrupado.index, df_agrupado['DEPOSIT AMT'], label='Datos Originales', color='blue')
+plt.title('Comparación de Modelos: Holt, Winter y Promedios Móviles')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.legend()
+
+# Predicciones de Holt
+plt.subplot(3, 1, 2)
+plt.plot(df_agrupado.index, df_agrupado['DEPOSIT AMT'], label='Datos Originales', color='blue')
+plt.plot(df_agrupado.index, predicciones_holt, label='Predicciones Holt', color='red')
+plt.title('Modelo de Holt')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.legend()
+
+# Predicciones de Winter
+plt.subplot(3, 1, 3)
+plt.plot(df_agrupado.index, df_agrupado['DEPOSIT AMT'], label='Datos Originales', color='blue')
+plt.plot(df_agrupado.index, predicciones_winter, label='Predicciones Winter', color='green')
+plt.title('Modelo de Winter')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.legend()
+
+# Ajustar el diseño para evitar solapamiento
+plt.tight_layout()
+
+# Mostrar la gráfica
+plt.show()
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Leer los datos agrupados
+df_agrupado = pd.read_excel('Predicciones_Holt.xlsx', index_col='DATE')
+
+# Ajustar el modelo de Holt
+modelo_holt = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add').fit()
+
+# Ajustar el modelo de Winters
+modelo_winter = ExponentialSmoothing(df_agrupado['DEPOSIT AMT'], trend='add', seasonal='add', seasonal_periods=12).fit()
+
+# Ajustar el modelo de Promedios Móviles Exponenciales (en este caso, usaremos un promedio móvil simple para simplificar)
+ventana = 12  # Ventana de 12 meses
+promedios_moviles = df_agrupado['DEPOSIT AMT'].rolling(window=ventana).mean()
+
+
+# Obtener las predicciones
+predicciones_holt = modelo_holt.predict(start=0, end=len(df_agrupado)-1)
+predicciones_winter = modelo_winter.predict(start=0, end=len(df_agrupado)-1)
+
+# Descomponer la serie temporal original para los modelos de Holt y Winter
+descomposicion_holt = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+descomposicion_winter = seasonal_decompose(df_agrupado['DEPOSIT AMT'], model='additive', period=12)
+
+
+# Ajustar el modelo de promedios móviles
+promedios_moviles = df_agrupado['DEPOSIT AMT'].rolling(window=ventana).mean()
+
+
+# Crear la figura y los ejes
+plt.figure(figsize=(14, 10))
+
+# Serie temporal original
+plt.plot(df_agrupado.index, df_agrupado['DEPOSIT AMT'], label='Datos Originales', color='blue')
+
+# Predicciones de Holt
+plt.plot(df_agrupado.index, predicciones_holt, label='Predicciones Holt', color='red')
+
+# Predicciones de Winter
+plt.plot(df_agrupado.index, predicciones_winter, label='Predicciones Winter', color='green')
+
+# Promedios móviles
+plt.plot(df_agrupado.index, promedios_moviles, label=f'Promedios Móviles ({ventana} meses)', color='purple')
+
+# Configuración de la gráfica
+plt.title('Comparación de Modelos: Holt, Winter y Promedios Móviles')
+plt.xlabel('Fecha')
+plt.ylabel('DEPOSIT AMT')
+plt.grid(True)
+plt.legend()
+
+# Mostrar la gráfica
+plt.tight_layout()
+plt.show()
+
+
+import numpy as np
+import pandas as pd
+
+# Supongamos que ya tenemos los datos de transición
+# Estados podrían ser rangos de montos de depósito
+estados = ['Bajo', 'Medio', 'Alto']
+
+# Matriz de transición (ejemplo aleatorio)
+transiciones = np.array([
+    [0.7, 0.2, 0.1],
+    [0.3, 0.4, 0.3],
+    [0.2, 0.3, 0.5]
+])
+
+# Crear un DataFrame para la matriz de transición
+df_transiciones = pd.DataFrame(transiciones, columns=estados, index=estados)
+
+# Calcular las probabilidades de estado estacionario
+# Resolver el sistema lineal (I - P + Q)π = 0 donde Q es una matriz de unos
+Q = np.ones_like(transiciones)
+A = np.eye(len(transiciones)) - transiciones + Q
+b = np.ones(len(transiciones))
+
+# Resolver el sistema lineal para encontrar las probabilidades estacionarias
+probabilidades_estacionarias = np.linalg.solve(A.T, b)
+probabilidades_estacionarias /= probabilidades_estacionarias.sum()
+
+print("Probabilidades estacionarias:", probabilidades_estacionarias)
+
+import pandas as pd
+
+# Datos para la matriz de riesgo de Persona Natural
+data_persona_natural = {
+    "Variable": [
+        "Tipo de Cliente", "Geografía", "Geografía", "Tipo de Productos y Servicios",
+        "Tipo de Productos y Servicios", "Naturaleza de la Relación", "Naturaleza de la Relación",
+        "Transacciones y Actividad", "Transacciones y Actividad", "Transacciones y Actividad",
+        "Fuente de Fondos", "Fuente de Fondos", "Cumplimiento Normativo", "Cumplimiento Normativo"
+    ],
+    "Sub-Variable": [
+        "Persona Física", "País de Residencia", "Transacciones Internacionales",
+        "Productos de Alto Riesgo", "Productos de Bajo Riesgo", "Duración de la Relación",
+        "Complejidad de las Operaciones", "Volumen de Transacciones", "Frecuencia de Transacciones",
+        "Patrones de Transacción", "Transparencia y Origen", "Montos Importantes",
+        "Historial de Cumplimiento", "Sanciones y Listas de Vigilancia"
+    ],
+    "Ponderación (%)": [
+        15, 20, 10, 15, 5, 5, 10, 10, 10, 15, 15, 10, 10, 20
+    ]
+}
+
+# Datos para la matriz de riesgo de Persona Jurídica
+data_persona_juridica = {
+    "Variable": [
+        "Tipo de Cliente", "Geografía", "Geografía", "Tipo de Productos y Servicios",
+        "Tipo de Productos y Servicios", "Naturaleza de la Relación", "Naturaleza de la Relación",
+        "Transacciones y Actividad", "Transacciones y Actividad", "Transacciones y Actividad",
+        "Fuente de Fondos", "Fuente de Fondos", "Cumplimiento Normativo", "Cumplimiento Normativo"
+    ],
+    "Sub-Variable": [
+        "Persona Jurídica", "Jurisdicción de Incorporación", "Transacciones Internacionales",
+        "Productos de Alto Riesgo", "Productos de Bajo Riesgo", "Duración de la Relación",
+        "Complejidad de las Operaciones", "Volumen de Transacciones", "Frecuencia de Transacciones",
+        "Patrones de Transacción", "Transparencia y Origen", "Montos Importantes",
+        "Historial de Cumplimiento", "Sanciones y Listas de Vigilancia"
+    ],
+    "Ponderación (%)": [
+        20, 20, 10, 15, 5, 5, 10, 10, 10, 15, 15, 10, 10, 20
+    ]
+}
+
+# Crear DataFrames
+df_persona_natural = pd.DataFrame(data_persona_natural)
+df_persona_juridica = pd.DataFrame(data_persona_juridica)
+
+# Crear un writer de Excel y escribir las dos hojas
+file_path = "C:/Users/User/Desktop/Curso R/Modelo_Predictivo/Matriz_Riesgo_Clientes.xlsx"
+with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+    df_persona_natural.to_excel(writer, sheet_name="Persona Natural", index=False)
+    df_persona_juridica.to_excel(writer, sheet_name="Persona Jurídica", index=False)
+
+file_path
+
+
+import numpy as np
+
+# Definimos los datos de depósitos por mes
+depositos = [
+    8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237, 
+    9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037, 
+    5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309, 
+    5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304, 
+    2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985, 
+    1184963197, 560385772, 442480569, 82334353
+]
+
+# Construimos la matriz de transición
+# Inicializamos una matriz de 12x12 con ceros
+P = np.zeros((12, 12))
+
+# Llenamos la matriz con probabilidades de transición secuenciales
+for i in range(11):
+    P[i, i + 1] = 1
+
+# Transición de diciembre a enero
+P[11, 0] = 1
+
+# Mostramos la matriz de transición
+P
+
+
+import numpy as np
+import pandas as pd
+
+# Datos de depósitos mensuales
+depositos = [
+    8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237, 
+    9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037, 
+    5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309, 
+    5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304, 
+    2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985, 
+    1184963197, 560385772, 442480569, 82334353
+]
+
+# Convertimos la lista a un DataFrame
+df = pd.DataFrame(depositos, columns=["Depositos"])
+
+# Calculamos los cambios porcentuales
+df['Cambio_Pct'] = df['Depositos'].pct_change()
+
+# Eliminamos el primer valor NaN resultante del cálculo de cambios porcentuales
+df.dropna(inplace=True)
+
+# Definimos las categorías
+def categorize_change(change):
+    if change > 0.10:
+        return 'Aumento Significativo'
+    elif 0 < change <= 0.10:
+        return 'Aumento Moderado'
+    elif -0.10 <= change < 0:
+        return 'Disminución Moderada'
+    elif change < -0.10:
+        return 'Disminución Significativa'
+    else:
+        return 'Sin Cambio'
+
+# Aplicamos la función de categorización
+df['Categoria'] = df['Cambio_Pct'].apply(categorize_change)
+
+# Contamos las transiciones entre categorías
+transitions = pd.crosstab(df['Categoria'], df['Categoria'].shift(-1), normalize='index')
+
+# Mostramos la matriz de transición
+transitions
+
+
+import pandas as pd
+
+# Datos de depósitos mensuales
+depositos = [
+    8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237, 
+    9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037, 
+    5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309, 
+    5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304, 
+    2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985, 
+    1184963197, 560385772, 442480569, 82334353
+]
+
+# Convertimos la lista a un DataFrame
+df = pd.DataFrame(depositos, columns=["Depositos"])
+
+# Calculamos los cambios porcentuales
+df['Cambio_Pct'] = df['Depositos'].pct_change()
+
+# Eliminamos el primer valor NaN resultante del cálculo de cambios porcentuales
+df.dropna(inplace=True)
+df
+
+
+# Definimos las categorías
+def categorize_change(change):
+    if change > 0.10:
+        return 'Aumento Significativo'
+    elif 0 < change <= 0.10:
+        return 'Aumento Moderado'
+    elif -0.10 <= change < 0:
+        return 'Disminución Moderada'
+    elif change < -0.10:
+        return 'Disminución Significativa'
+    else:
+        return 'Sin Cambio'
+
+# Aplicamos la función de categorización
+df['Categoria'] = df['Cambio_Pct'].apply(categorize_change)
+
+# Contamos las transiciones entre categorías
+transitions = pd.crosstab(df['Categoria'], df['Categoria'].shift(-1), normalize='index')
+
+# Mostramos la matriz de transición
+transitions
+
+
+import numpy as np
+
+# Convertimos la matriz de transición a un array de numpy
+P = transitions.to_numpy()
+
+# Definimos las estrategias como las categorías
+estrategias = transitions.columns
+
+# Buscamos equilibrios de Nash
+# Un enfoque sencillo es identificar las estrategias dominantes
+# Aquí buscamos las estrategias que tienen la mayor probabilidad de transición
+equilibrios = np.argmax(P, axis=1)
+
+# Mostramos las estrategias dominantes para cada categoría
+equilibrios_estrategias = [estrategias[i] for i in equilibrios]
+
+# Convertimos a un DataFrame para una mejor visualización
+equilibrios_df = pd.DataFrame({
+    'Categoría': transitions.index,
+    'Estrategia Dominante': equilibrios_estrategias
+})
+
+equilibrios_df
+
+
+
+import pandas as pd
+from statsmodels.tsa.seasonal import seasonal_decompose
+import matplotlib.pyplot as plt
+
+# Datos de ejemplo
+data = {
+    'Date': [
+        "2016-01-01", "2016-02-01", "2016-03-01", "2016-04-01", "2016-05-01",
+        "2016-06-01", "2016-07-01", "2016-08-01", "2016-09-01", "2016-10-01",
+        "2016-11-01", "2016-12-01", "2017-01-01", "2017-02-01", "2017-03-01",
+        "2017-04-01", "2017-05-01", "2017-06-01", "2017-07-01", "2017-08-01",
+        "2017-09-01", "2017-10-01", "2017-11-01", "2017-12-01", "2018-01-01",
+        "2018-02-01", "2018-03-01", "2018-04-01", "2018-05-01", "2018-06-01",
+        "2018-07-01", "2018-08-01", "2018-09-01", "2018-10-01", "2018-11-01",
+        "2018-12-01", "2019-01-01", "2019-02-01", "2019-03-01"
+    ],
+    'Deposits': [
+        8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237,
+        9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037,
+        5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309,
+        5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304,
+        2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985,
+        1184963197, 560385772, 442480569, 82334353
+    ]
+}
+
+df = pd.DataFrame(data)
+df['Date'] = pd.to_datetime(df['Date'])
+df.set_index('Date', inplace=True)
+
+# Descomposición de la serie temporal
+result = seasonal_decompose(df['Deposits'], model='additive', period=12)
+
+# Graficamos los componentes
+result.plot()
+plt.show()
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Ejemplo de datos adicionales (tasas de interés)
+interest_rates = [
+    0.25, 0.25, 0.25, 0.50, 0.50, 0.50, 0.75, 0.75, 1.00, 1.00,
+    1.25, 1.50, 1.75, 1.75, 2.00, 2.25, 2.25, 2.50, 2.50, 2.75,
+    2.75, 3.00, 3.00, 3.25, 3.25, 3.50, 3.50, 3.75, 3.75, 4.00,
+    4.00, 4.25, 4.25, 4.50, 4.50, 4.75, 4.75, 5.00, 5.00
+]
+
+df['Interest_Rates'] = interest_rates
+df
+# Calculamos la correlación
+correlation = df.corr()
+correlation
+# Visualizamos la correlación
+sns.heatmap(correlation, annot=True, cmap='coolwarm')
+plt.show()
+
+
+import pandas as pd
+
+# Datos de ejemplo
+data = {
+    'Date': [
+        "2016-01-01", "2016-02-01", "2016-03-01", "2016-04-01", "2016-05-01",
+        "2016-06-01", "2016-07-01", "2016-08-01", "2016-09-01", "2016-10-01",
+        "2016-11-01", "2016-12-01", "2017-01-01", "2017-02-01", "2017-03-01",
+        "2017-04-01", "2017-05-01", "2017-06-01", "2017-07-01", "2017-08-01",
+        "2017-09-01", "2017-10-01", "2017-11-01", "2017-12-01", "2018-01-01",
+        "2018-02-01", "2018-03-01", "2018-04-01", "2018-05-01", "2018-06-01",
+        "2018-07-01", "2018-08-01", "2018-09-01", "2018-10-01", "2018-11-01",
+        "2018-12-01", "2019-01-01", "2019-02-01", "2019-03-01"
+    ],
+    'Deposits': [
+        8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237,
+        9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037,
+        5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309,
+        5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304,
+        2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985,
+        1184963197, 560385772, 442480569, 82334353
+    ]
+}
+
+df = pd.DataFrame(data)
+df['Date'] = pd.to_datetime(df['Date'])
+df.set_index('Date', inplace=True)
+
+# Definir las tasas de interés
+interest_rates = [
+    0.25, 0.25, 0.25, 0.50, 0.50, 0.50, 0.75, 0.75, 1.00, 1.00,
+    1.25, 1.50, 1.75, 1.75, 2.00, 2.25, 2.25, 2.50, 2.50, 2.75,
+    2.75, 3.00, 3.00, 3.25, 3.25, 3.50, 3.50, 3.75, 3.75, 4.00,
+    4.00, 4.25, 4.25, 4.50, 4.50, 4.75, 4.75, 5.00, 5.00
+]
+
+df['Interest_Rates'] = interest_rates
+
+print(df.head())
+
+# Calculamos la correlación
+correlation = df.corr()
+print(correlation)
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Visualizamos la correlación
+sns.heatmap(correlation, annot=True, cmap='coolwarm')
+plt.show()
+
+
+import pandas as pd
+
+# Datos de ejemplo
+data = {
+    'Date': [
+        "2016-01-01", "2016-02-01", "2016-03-01", "2016-04-01", "2016-05-01",
+        "2016-06-01", "2016-07-01", "2016-08-01", "2016-09-01", "2016-10-01",
+        "2016-11-01", "2016-12-01", "2017-01-01", "2017-02-01", "2017-03-01",
+        "2017-04-01", "2017-05-01", "2017-06-01", "2017-07-01", "2017-08-01",
+        "2017-09-01", "2017-10-01", "2017-11-01", "2017-12-01", "2018-01-01",
+        "2018-02-01", "2018-03-01", "2018-04-01", "2018-05-01", "2018-06-01",
+        "2018-07-01", "2018-08-01", "2018-09-01", "2018-10-01", "2018-11-01",
+        "2018-12-01", "2019-01-01", "2019-02-01", "2019-03-01"
+    ],
+    'Deposits': [
+        8331384871, 7836305036, 9016047766, 9915900248, 8781781477, 9511435558, 9216641237,
+        9164066131, 7338026810, 7877015234, 6798588274, 5990816097, 6129380224, 5283389037,
+        5888666065, 4708339969, 4555736696, 3933956432, 3610631213, 4050477112, 4792585309,
+        5124812936, 5023483022, 4095961880, 3315541763, 3547779440, 2655524440, 2638652304,
+        2791408164, 2398120428, 2479054448, 2045434602, 1813985502, 2167624460, 1561048985,
+        1184963197, 560385772, 442480569, 82334353
+    ]
+}
+
+df = pd.DataFrame(data)
+df['Date'] = pd.to_datetime(df['Date'])
+df.set_index('Date', inplace=True)
+
+print(df.head())
+
+
+# Definir las tasas de interés
+interest_rates = [
+    0.25, 0.25, 0.25, 0.50, 0.50, 0.50, 0.75, 0.75, 1.00, 1.00,
+    1.25, 1.50, 1.75, 1.75, 2.00, 2.25, 2.25, 2.50, 2.50, 2.75,
+    2.75, 3.00, 3.00, 3.25, 3.25, 3.50, 3.50, 3.75, 3.75, 4.00,
+    4.00, 4.25, 4.25, 4.50, 4.50, 4.75, 4.75, 5.00, 5.00
+]
+
+df['Interest_Rates'] = interest_rates
+
+# Calculamos la correlación
+correlation = df.corr()
+print(correlation)
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Visualizamos la correlación
+sns.heatmap(correlation, annot=True, cmap='coolwarm')
+plt.show()
+
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+
+# Preparación de datos
+X = df.index.factorize()[0].reshape(-1, 1)  # Usar el índice como variable independiente
+y = df['Deposits'].values
+
+# División en conjunto de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Entrenamiento del modelo
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Predicciones
+y_pred = model.predict(X_test)
+
+# Evaluación del modelo
+mse = mean_squared_error(y_test, y_pred)
+print(f"Mean Squared Error: {mse}")
+
+# Graficamos las predicciones vs valores reales
+plt.scatter(X_test, y_test, color='blue', label='Actual')
+plt.scatter(X_test, y_pred, color='red', label='Predicted')
+plt.legend()
+plt.show()
+
+
+import pandas as pd
+import numpy as np
+
+# Crear el DataFrame con los datos proporcionados
+data = {
+    'Periodo': list(range(1, 40)),
+    'Depositos': [
+        8331384871, 7836305036, 9016047766, 9915900248, 8781781477,
+        9511435558, 9216641237, 9164066131, 7338026810, 7877015234,
+        6798588274, 5990816097, 6129380224, 5283389037, 5888666065,
+        4708339969, 4555736696, 3933956432, 3610631213, 4050477112,
+        4792585309, 5124812936, 5023483022, 4095961880, 3315541763,
+        3547779440, 2655524440, 2638652304, 2791408164, 2398120428,
+        2479054448, 2045434602, 1813985502, 2167624460, 1561048985,
+        1184963197, 560385772, 442480569, 82334353
+    ]
+}
+
+df = pd.DataFrame(data)
+
+# Calcular la tasa de cambio mensual
+df['Change_Rate'] = df['Depositos'].pct_change() * 100
+
+# Definir los umbrales para las categorías
+def categorize_change(rate):
+    if rate > 5:
+        return 'Aumento Significativo'
+    elif 0 < rate <= 5:
+        return 'Aumento Moderado'
+    elif -5 <= rate <= 0:
+        return 'Disminución Moderada'
+    else:
+        return 'Disminución Significativa'
+
+# Aplicar la función de categorización
+df['Change_Category'] = df['Change_Rate'].apply(categorize_change)
+
+# Convertir la variable categórica en variables dummy
+df = pd.get_dummies(df, columns=['Change_Category'])
+
+# Preparar los datos para el modelo de regresión
+X = df.drop(columns=['Periodo', 'Depositos', 'Change_Rate'])
+y = df['Depositos']
+
+# Dividir en conjuntos de entrenamiento y prueba
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Entrenar el modelo de regresión lineal
+from sklearn.linear_model import LinearRegression
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Realizar predicciones
+y_pred = model.predict(X_test)
+
+# Evaluar el modelo
+from sklearn.metrics import mean_squared_error
+mse = mean_squared_error(y_test, y_pred)
+print(f"Mean Squared Error: {mse}")
+
+# Graficar las predicciones vs valores reales
+import matplotlib.pyplot as plt
+plt.scatter(range(len(y_test)), y_test, color='blue', label='Actual')
+plt.scatter(range(len(y_test)), y_pred, color='red', label='Predicted')
+plt.legend()
+plt.show()
+
+df.head()  # Mostrar las primeras filas del DataFrame para verificar
+
+
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
+
+# Crear el DataFrame con los datos proporcionados
+data = {
+    'Periodo': list(range(1, 40)),
+    'Depositos': [
+        8331384871, 7836305036, 9016047766, 9915900248, 8781781477,
+        9511435558, 9216641237, 9164066131, 7338026810, 7877015234,
+        6798588274, 5990816097, 6129380224, 5283389037, 5888666065,
+        4708339969, 4555736696, 3933956432, 3610631213, 4050477112,
+        4792585309, 5124812936, 5023483022, 4095961880, 3315541763,
+        3547779440, 2655524440, 2638652304, 2791408164, 2398120428,
+        2479054448, 2045434602, 1813985502, 2167624460, 1561048985,
+        1184963197, 560385772, 442480569, 82334353
+    ]
+}
+
+df = pd.DataFrame(data)
+
+# Calcular la tasa de cambio mensual
+df['Change_Rate'] = df['Depositos'].pct_change() * 100
+
+# Definir los umbrales para las categorías
+def categorize_change(rate):
+    if rate > 5:
+        return 'Aumento Significativo'
+    elif 0 < rate <= 5:
+        return 'Aumento Moderado'
+    elif -5 <= rate <= 0:
+        return 'Disminución Moderada'
+    else:
+        return 'Disminución Significativa'
+
+# Aplicar la función de categorización
+df['Change_Category'] = df['Change_Rate'].apply(categorize_change)
+
+# Convertir la variable categórica en variables dummy
+df = pd.get_dummies(df, columns=['Change_Category'])
+
+# Preparar los datos para el modelo de regresión
+X = df.drop(columns=['Periodo', 'Depositos', 'Change_Rate'])
+y = df['Depositos']
+
+# Dividir en conjuntos de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Entrenar el modelo de regresión lineal
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Realizar predicciones
+y_pred = model.predict(X_test)
+
+# Evaluar el modelo
+mse = mean_squared_error(y_test, y_pred)
+mad = mean_absolute_error(y_test, y_pred)
+mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+
+# Calcular el Tracking Signal
+cumulative_error = np.sum(y_test - y_pred)
+ts = cumulative_error / mad
+
+print(f"Mean Squared Error (MSE): {mse}")
+print(f"Mean Absolute Deviation (MAD): {mad}")
+print(f"Mean Absolute Percentage Error (MAPE): {mape}")
+print(f"Tracking Signal (TS): {ts}")
+
+# Graficar las predicciones vs valores reales
+plt.scatter(range(len(y_test)), y_test, color='blue', label='Actual')
+plt.scatter(range(len(y_test)), y_pred, color='red', label='Predicted')
+plt.legend()
+plt.savefig('predicciones.png')  # Guardar la figura como imagen PNG
+
+plt.show()
+
+df.head()  # Mostrar las primeras filas del DataFrame para verificar
+
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'Year': [
+        2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2017, 2017, 2017, 2017, 2017, 2017, 2017, 2017,
+        2017, 2017, 2017, 2017, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2019, 2019, 2019
+    ],
+    'Month': [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+
+# Convertir la columna de depósitos a un formato numérico (eliminar comas si existen)
+df['DEPOSIT AMT'] = df['DEPOSIT AMT'].apply(lambda x: float(str(x).replace(',', '')))
+
+# Crear el histograma
+plt.hist(df['DEPOSIT AMT'], bins=10, edgecolor='black')
+
+# Añadir título y etiquetas
+plt.title('Histograma de Montos de Depósito del Banco XYZ')
+plt.xlabel('Monto del Depósito')
+plt.ylabel('Frecuencia')
+
+# Mostrar el histograma
+plt.show()
+
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'Year': [
+        2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2017, 2017, 2017, 2017, 2017, 2017, 2017, 2017,
+        2017, 2017, 2017, 2017, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2019, 2019, 2019
+    ],
+    'Month': [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+
+# Convertir la columna de depósitos a un formato numérico (eliminar comas si existen)
+df['DEPOSIT AMT'] = df['DEPOSIT AMT'].apply(lambda x: float(str(x).replace(',', '')))
+
+# Crear el histograma
+plt.figure(figsize=(12, 6))
+plt.hist(df['DEPOSIT AMT'], bins=10, edgecolor='black')
+plt.title('Histograma de Montos de Depósito del Banco XYZ')
+plt.xlabel('Monto del Depósito')
+plt.ylabel('Frecuencia')
+plt.show()
+
+# Crear el gráfico de caja (box plot) para la variabilidad
+plt.figure(figsize=(12, 6))
+plt.boxplot(df['DEPOSIT AMT'], vert=False)
+plt.title('Gráfico de Caja de Montos de Depósito del Banco XYZ')
+plt.xlabel('Monto del Depósito')
+plt.show()
+
+
+import pandas as pd
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'Year': [
+        2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2016, 2017, 2017, 2017, 2017, 2017, 2017, 2017, 2017,
+        2017, 2017, 2017, 2017, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2018, 2019, 2019, 2019
+    ],
+    'Month': [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+
+# Convertir la columna de depósitos a un formato numérico (eliminar comas si existen)
+df['DEPOSIT AMT'] = df['DEPOSIT AMT'].apply(lambda x: float(str(x).replace(',', '')))
+
+# Calcular estadísticas descriptivas
+statistics = df['DEPOSIT AMT'].describe()
+statistics
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+
+# Convertir la columna de depósitos a un formato numérico (eliminar comas si existen)
+df['DEPOSIT AMT'] = df['DEPOSIT AMT'].apply(lambda x: float(str(x).replace(',', '')))
+
+# Convertir la columna de fecha a datetime
+df['DATE'] = pd.to_datetime(df['DATE'])
+
+# Crear una columna numérica para la fecha
+df['DATE_ORDINAL'] = df['DATE'].apply(lambda date: date.toordinal())
+
+# Separar variables independientes y dependientes
+X = df[['DATE_ORDINAL']]
+y = df['DEPOSIT AMT']
+
+# Dividir los datos en conjuntos de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+# Regresión Lineal Simple
+linear_regressor = LinearRegression()
+linear_regressor.fit(X_train, y_train)
+y_pred_linear = linear_regressor.predict(X_test)
+
+# Evaluación del modelo lineal
+print("Linear Regression R^2:", r2_score(y_test, y_pred_linear))
+print("Linear Regression MSE:", mean_squared_error(y_test, y_pred_linear))
+
+# Regresión Polinómica (grado 2)
+poly_features = PolynomialFeatures(degree=2)
+X_train_poly = poly_features.fit_transform(X_train)
+X_test_poly = poly_features.transform(X_test)
+
+poly_regressor = LinearRegression()
+poly_regressor.fit(X_train_poly, y_train)
+y_pred_poly = poly_regressor.predict(X_test_poly)
+
+# Evaluación del modelo polinómico
+print("Polynomial Regression R^2:", r2_score(y_test, y_pred_poly))
+print("Polynomial Regression MSE:", mean_squared_error(y_test, y_pred_poly))
+
+# Graficar los resultados
+plt.figure(figsize=(14, 7))
+
+# Graficar Regresión Lineal
+plt.subplot(1, 2, 1)
+plt.scatter(X, y, color='gray')
+plt.plot(X, linear_regressor.predict(X), color='red', linewidth=2)
+plt.title('Regresión Lineal Simple')
+plt.xlabel('Fecha')
+plt.ylabel('Monto del Depósito')
+plt.xticks(rotation=45)
+
+# Graficar Regresión Polinómica
+plt.subplot(1, 2, 2)
+plt.scatter(X, y, color='gray')
+plt.plot(X, poly_regressor.predict(poly_features.transform(X)), color='blue', linewidth=2)
+plt.title('Regresión Polinómica (Grado 2)')
+plt.xlabel('Fecha')
+plt.ylabel('Monto del Depósito')
+plt.xticks(rotation=45)
+
+plt.tight_layout()
+plt.show()
+
+
+import pandas as pd
+import numpy as np
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+
+# Convertir la columna de depósitos a un formato numérico (eliminar comas si existen)
+df['DEPOSIT AMT'] = df['DEPOSIT AMT'].apply(lambda x: float(str(x).replace(',', '')))
+
+# Calcular la varianza de los datos de depósito
+variance = np.var(df['DEPOSIT AMT'])
+variance
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.api import SimpleExpSmoothing, Holt
+from sklearn.metrics import mean_squared_error
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+df['DATE'] = pd.to_datetime(df['DATE'])
+df.set_index('DATE', inplace=True)
+
+# Crear un conjunto de entrenamiento y prueba
+train = df[:'2018-12-01']
+test = df['2019-01-01':]
+
+# Modelo de Promedios Móviles
+def moving_average(data, window_size):
+    return data.rolling(window=window_size).mean()
+
+window_size = 3
+ma_predictions = moving_average(train['DEPOSIT AMT'], window_size).iloc[-len(test):]
+
+# Modelo de Holt
+holt_model = Holt(train['DEPOSIT AMT']).fit()
+holt_predictions = holt_model.forecast(len(test))
+
+# Modelo de Holt-Winters (sin estacionalidad)
+hw_model = ExponentialSmoothing(train['DEPOSIT AMT'], trend='add', seasonal=None).fit()
+hw_predictions = hw_model.forecast(len(test))
+
+# Evaluación de los Modelos
+mse_ma = mean_squared_error(test['DEPOSIT AMT'], ma_predictions)
+mse_holt = mean_squared_error(test['DEPOSIT AMT'], holt_predictions)
+mse_hw = mean_squared_error(test['DEPOSIT AMT'], hw_predictions)
+
+print("MSE del Modelo de Promedios Móviles:", mse_ma)
+print("MSE del Modelo de Holt:", mse_holt)
+print("MSE del Modelo de Holt-Winters:", mse_hw)
+
+# Graficar los Resultados
+plt.figure(figsize=(14, 7))
+
+plt.plot(train.index, train['DEPOSIT AMT'], label='Entrenamiento')
+plt.plot(test.index, test['DEPOSIT AMT'], label='Prueba')
+plt.plot(test.index, ma_predictions, label='Promedios Móviles')
+plt.plot(test.index, holt_predictions, label='Holt')
+plt.plot(test.index, hw_predictions, label='Holt-Winters')
+
+plt.title('Modelos de Pronóstico')
+plt.xlabel('Fecha')
+plt.ylabel('Monto del Depósito')
+plt.legend()
+plt.show()
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.api import SimpleExpSmoothing, Holt
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+# Datos históricos del Banco XYZ
+data = {
+    'DATE': [
+        '2016-01-01', '2016-02-01', '2016-03-01', '2016-04-01', '2016-05-01', '2016-06-01', '2016-07-01', '2016-08-01', '2016-09-01', '2016-10-01',
+        '2016-11-01', '2016-12-01', '2017-01-01', '2017-02-01', '2017-03-01', '2017-04-01', '2017-05-01', '2017-06-01', '2017-07-01', '2017-08-01',
+        '2017-09-01', '2017-10-01', '2017-11-01', '2017-12-01', '2018-01-01', '2018-02-01', '2018-03-01', '2018-04-01', '2018-05-01', '2018-06-01',
+        '2018-07-01', '2018-08-01', '2018-09-01', '2018-10-01', '2018-11-01', '2018-12-01', '2019-01-01', '2019-02-01', '2019-03-01'
+    ],
+    'DEPOSIT AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95, 8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93, 7338026809.76, 7877015233.63,
+        6798588273.84, 5990816097.02, 6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22, 4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35, 3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80, 2791408163.90, 2398120427.96,
+        2479054448.17, 2045434601.83, 1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02, 560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+# Convertir los datos a un DataFrame de pandas
+df = pd.DataFrame(data)
+df['DATE'] = pd.to_datetime(df['DATE'])
+df.set_index('DATE', inplace=True)
+
+# Crear un conjunto de entrenamiento y prueba
+train = df[:'2018-12-01']
+test = df['2019-01-01':]
+
+# Modelo de Promedios Móviles
+def moving_average(data, window_size):
+    return data.rolling(window=window_size).mean()
+
+window_size = 3
+ma_predictions = moving_average(train['DEPOSIT AMT'], window_size).iloc[-len(test):]
+
+# Modelo de Holt
+holt_model = Holt(train['DEPOSIT AMT']).fit()
+holt_predictions = holt_model.forecast(len(test))
+
+# Modelo de Holt-Winters (sin estacionalidad)
+hw_model = ExponentialSmoothing(train['DEPOSIT AMT'], trend='add', seasonal=None).fit()
+hw_predictions = hw_model.forecast(len(test))
+
+# Evaluación de los Modelos
+mse_ma = mean_squared_error(test['DEPOSIT AMT'], ma_predictions)
+mse_holt = mean_squared_error(test['DEPOSIT AMT'], holt_predictions)
+mse_hw = mean_squared_error(test['DEPOSIT AMT'], hw_predictions)
+
+mad_ma = mean_absolute_error(test['DEPOSIT AMT'], ma_predictions)
+mad_holt = mean_absolute_error(test['DEPOSIT AMT'], holt_predictions)
+mad_hw = mean_absolute_error(test['DEPOSIT AMT'], hw_predictions)
+
+print("MSE del Modelo de Promedios Móviles:", mse_ma)
+print("MSE del Modelo de Holt:", mse_holt)
+print("MSE del Modelo de Holt-Winters:", mse_hw)
+
+print("MAD del Modelo de Promedios Móviles:", mad_ma)
+print("MAD del Modelo de Holt:", mad_holt)
+print("MAD del Modelo de Holt-Winters:", mad_hw)
+
+# Graficar los Resultados
+plt.figure(figsize=(14, 7))
+
+plt.plot(train.index, train['DEPOSIT AMT'], label='Entrenamiento')
+plt.plot(test.index, test['DEPOSIT AMT'], label='Prueba')
+plt.plot(test.index, ma_predictions, label='Promedios Móviles')
+plt.plot(test.index, holt_predictions, label='Holt')
+plt.plot(test.index, hw_predictions, label='Holt-Winters')
+
+plt.title('Modelos de Pronóstico')
+plt.xlabel('Fecha')
+plt.ylabel('Monto del Depósito')
+plt.legend()
+plt.show()
+
+
+import pandas as pd
+import numpy as np
+
+# Datos de depósito mensual (ejemplo simplificado)
+data = {
+    'DATE': pd.date_range(start='2016-01-01', periods=39, freq='MS'),
+    'DEPOSIT_AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95,
+        8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93,
+        7338026810.76, 7877015233.63, 6798588273.84, 5990816097.02,
+        6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22,
+        4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35,
+        3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80,
+        2791408163.90, 2398120427.96, 2479054448.17, 2045434601.83,
+        1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02,
+        560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+df = pd.DataFrame(data)
+
+# Pronóstico hipotético (ejemplo)
+forecast = df['DEPOSIT_AMT'] * 1.05  # Ejemplo de pronóstico: incremento del 5%
+
+# Calcular errores de pronóstico
+forecast_errors = forecast - df['DEPOSIT_AMT']
+
+# Calcular MAD
+mad = np.mean(np.abs(forecast_errors))
+
+# Calcular la suma acumulativa de errores
+cumulative_errors = np.cumsum(forecast_errors)
+
+# Calcular TS Inferior y TS Superior
+ts_inferior = -4 * mad
+ts_superior = 4 * mad
+
+print(f"TS Inferior: {ts_inferior}")
+print(f"TS Superior: {ts_superior}")
+
+
+import pandas as pd
+import numpy as np
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import matplotlib.pyplot as plt
+
+# Datos de depósito mensual (ejemplo simplificado)
+data = {
+    'DATE': pd.date_range(start='2016-01-01', periods=39, freq='MS'),
+    'DEPOSIT_AMT': [
+        8331384871.27, 7836305035.56, 9016047765.98, 9915900247.95,
+        8781781476.84, 9511435558.01, 9216641236.58, 9164066130.93,
+        7338026810.76, 7877015233.63, 6798588273.84, 5990816097.02,
+        6129380223.57, 5283389036.75, 5888666065.08, 4708339969.22,
+        4555736696.19, 3933956432.24, 3610631213.07, 4050477112.44,
+        4792585309.43, 5124812935.65, 5023483021.76, 4095961880.35,
+        3315541763.35, 3547779440.48, 2655524439.86, 2638652303.80,
+        2791408163.90, 2398120427.96, 2479054448.17, 2045434601.83,
+        1813985502.00, 2167624460.16, 1561048985.43, 1184963197.02,
+        560385772.24, 442480568.99, 82334352.50
+    ]
+}
+
+df = pd.DataFrame(data)
+
+# Ajuste del modelo de Holt
+model = ExponentialSmoothing(df['DEPOSIT_AMT'], seasonal='mul', seasonal_periods=12)
+fit = model.fit()
+
+# Pronósticos del modelo
+forecast = fit.forecast(12)  # Ejemplo de pronóstico para 12 meses
+
+# Calcular errores de pronóstico
+forecast_errors = forecast[:len(df)] - df['DEPOSIT_AMT']
+
+# Calcular MAD
+mad = np.mean(np.abs(forecast_errors))
+mad
+# Calcular la suma acumulativa de errores
+cumulative_errors = np.cumsum(forecast_errors)
+
+# Calcular TS Inferior
+ts_inferior = -4 * mad
+
+print(f"TS Inferior (Holt): {ts_inferior}")
+
+# MAD proporcionado
+MAD = 372827981.53
+
+# Suma acumulativa de errores de pronóstico (ejemplo)
+cumulative_errors = [-100000000, 50000000, -30000000, 70000000, -80000000]
+
+# Calcular el Tracking Signal (TS)
+TS = sum(cumulative_errors) / MAD
+
+print(f"Tracking Signal (TS): {TS}")
